@@ -14,7 +14,7 @@ import (
 
 const localPath string = "D:\\Practice\\Go\\danbooru\\"
 const endpoint string = "http://danbooru.donmai.us/posts.json?limit=1&tags=architecture+no_humans&random=true"
-const interval = 10 * time.Minute //10 minutes
+const interval = 600 //in seconds, 600 secconds == 10 minutes
 
 var fileName = "random.jpg"
 
@@ -59,31 +59,7 @@ func fetchNewImage(fileURL, filePath string) {
 	}
 }
 
-func wallpaper() {
-	fileURL := ""
-	for {
-		if _, err := os.Stat(localPath + fileName); err == nil {
-			err := os.Remove(localPath + fileName)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		fileURL = fetchNewImageLink()
-		fileName = fileURL[strings.LastIndex(fileURL, "/")+1:]
-		fetchNewImage(fileURL, localPath+fileName)
-		time.Sleep(interval)
-	}
-}
-
-func userInterface() {
-	for {
-		fmt.Print("Press q or quit and enter when you want to quit: ")
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		if (input[:len(input)-2] == "q") || (input[:len(input)-2] == "quit") {
-			break
-		}
-	}
+func deleteCurrentImg() {
 	if _, err := os.Stat(localPath + fileName); err == nil {
 		err := os.Remove(localPath + fileName)
 		if err != nil {
@@ -92,7 +68,48 @@ func userInterface() {
 	}
 }
 
+func wallpaper(ch chan bool) {
+ChangeWallpaper:
+	for {
+		deleteCurrentImg()
+		fileURL := fetchNewImageLink()
+		fileName = fileURL[strings.LastIndex(fileURL, "/")+1:]
+		fetchNewImage(fileURL, localPath+fileName)
+		for i := 0; i < interval; i++ {
+			select {
+			case <-ch:
+				continue ChangeWallpaper
+			default:
+				time.Sleep(time.Second)
+			}
+		}
+	}
+}
+
+func userInterface(ch chan bool) {
+WaitForUserInteraction:
+	for {
+		fmt.Println("Press q or quit and enter when you want to quit.")
+		fmt.Println("Press n or next to force next wallpaper right now.")
+		fmt.Print("What is your choice? ")
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		switch input[:len(input)-2] {
+		case "q":
+			break WaitForUserInteraction
+		case "quit":
+			break WaitForUserInteraction
+		case "n":
+			ch <- true
+		case "next":
+			ch <- true
+		}
+	}
+	deleteCurrentImg()
+}
+
 func main() {
-	go wallpaper()
-	userInterface()
+	var interrupt = make(chan bool)
+	go wallpaper(interrupt)
+	userInterface(interrupt)
 }
